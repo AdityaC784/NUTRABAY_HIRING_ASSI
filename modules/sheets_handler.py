@@ -85,7 +85,7 @@ def read_shortlisted() -> pd.DataFrame:
     return df[df["Shortlisted"] == "Yes"]
 
 # ── Interviewer Master ─────────────────────────────────────────────────────────
-INTERVIEWER_HEADERS = ["Name", "Email", "Department", "Max Interviews Per Day", "Preferred Slots"]
+INTERVIEWER_HEADERS = ["Name", "Email", "Department", "Max Interviews Per Day"]
 
 def save_interviewers(interviewers: list):
     sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Nutrabay_Hiring_Pipeline")
@@ -98,7 +98,7 @@ def save_interviewers(interviewers: list):
             iv.get("email", ""),
             iv.get("department", ""),
             iv.get("max_per_day", 3),
-            iv.get("preferred_slots", "")
+          
         ])
 
 def read_interviewers() -> pd.DataFrame:
@@ -160,3 +160,14 @@ def confirm_slot(slot_index: int):
     sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Nutrabay_Hiring_Pipeline")
     ws = get_or_create_sheet(sheet_name, "Scheduled Interviews")
     ws.update_cell(slot_index + 2, 7, "Yes")
+
+
+def update_slot_confirmed(candidate_name: str, confirmed_slot: str):
+    sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Nutrabay_Hiring_Pipeline")
+    ws = get_or_create_sheet(sheet_name, "Scheduled Interviews")
+    records = ws.get_all_records()
+    for i, record in enumerate(records, 2):
+        if record.get("Candidate", "").strip().lower() == candidate_name.strip().lower():
+            ws.update_cell(i, 7, "Yes")          # Confirmed column
+            ws.update_cell(i, 5, confirmed_slot)  # Slot column
+            break

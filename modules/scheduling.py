@@ -30,7 +30,7 @@ def build_schedule_from_responses(
         for _, row in interviewers.iterrows()
     )
 
-    prompt = f"""You are an interview scheduling assistant.
+    prompt = f"""You are an expert interview scheduling assistant.
 
 CANDIDATES AVAILABILITY:
 {cand_text}
@@ -38,24 +38,29 @@ CANDIDATES AVAILABILITY:
 INTERVIEWERS AVAILABILITY:
 {iv_text}
 
-TASK:
-- For each candidate, find the best overlapping time slot with an available interviewer
-- Respect each interviewer's max interviews per day limit
-- Suggest exactly one best slot per candidate
+SCHEDULING RULES (follow strictly):
+1. Find best overlapping 1-hour slot for each candidate with an interviewer
+2. NO two candidates can be assigned the same interviewer at the same time
+   - If conflict: assign first candidate that slot, shift second candidate to next available window
+   - Example: Both want Tue 1PM-2PM → Candidate A gets Tue 1PM-2PM, Candidate B gets Tue 2PM-3PM
+3. Respect max interviews per day per interviewer
+   - If interviewer is fully booked: assign candidate to next available interviewer
+   - If NO interviewer available: set slot as "Admin Action Required"
+4. If no overlap at all for a candidate: set slot as "No Overlap Found"
 
-Return ONLY a valid JSON array like this (no markdown, no extra text):
+Return ONLY a valid JSON array (no markdown, no extra text):
 [
   {{
-    "candidate": "Candidate Full Name",
-    "candidate_email": "candidate@email.com",
-    "interviewer": "Interviewer Full Name",
-    "interviewer_email": "interviewer@email.com",
-    "slot": "Tuesday 3PM - 4PM",
-    "reasoning": "Only overlapping window between candidate and interviewer"
+    "candidate": "Full Name",
+    "candidate_email": "email",
+    "interviewer": "Full Name",
+    "interviewer_email": "email",
+    "slot": "Tuesday 1PM - 2PM",
+    "status": "Confirmed / Conflict Resolved / No Overlap / Interviewer Full",
+    "reasoning": "explain the decision clearly"
   }}
-]
+]"""
 
-If no overlap found for a candidate, still include them with slot: "No overlap found" and reasoning explaining why."""
 
     model = genai.GenerativeModel("gemini-3-flash-preview")
     response = model.generate_content(prompt)

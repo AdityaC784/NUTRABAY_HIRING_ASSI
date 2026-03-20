@@ -13,7 +13,7 @@ from modules.sheets_handler import (
     update_shortlist, read_shortlisted,
     save_interviewers, read_interviewers,
     save_availability_response, read_availability_responses,
-    save_scheduled_slots
+    save_scheduled_slots,update_slot_confirmed 
 )
 from modules.email_handler import (
     send_availability_request_candidate,
@@ -59,7 +59,7 @@ tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ══════════════════════════════════════════════════════════════════════════════
 with tab0:
     st.header("⚙️ One-Time Setup")
-    st.info("Add interviewers below. This is saved permanently to Google Sheets.")
+    st.info("Add interviewers below. Saved permanently to Google Sheets.")
 
     existing = read_interviewers()
     if not existing.empty:
@@ -67,26 +67,30 @@ with tab0:
         st.dataframe(existing, use_container_width=True)
 
     st.subheader("Add / Update Interviewers")
-    num = st.number_input("Number of interviewers", min_value=1, max_value=10, value=3)
-    interviewers = []
-    for i in range(int(num)):
-        st.markdown(f"**Interviewer {i+1}**")
-        c1, c2, c3, c4, c5 = st.columns(5)
-        interviewers.append({
-            "name": c1.text_input("Name", key=f"iv_name_{i}"),
-            "email": c2.text_input("Email", key=f"iv_email_{i}"),
-            "department": c3.text_input("Dept", key=f"iv_dept_{i}"),
-            "max_per_day": c4.number_input("Max/Day", 1, 10, 3, key=f"iv_max_{i}"),
-            "preferred_slots": c5.text_input("Preferred Slots", key=f"iv_slots_{i}",
-                                              placeholder="Mon 10AM-1PM, Tue 2PM-5PM")
-        })
-    if st.button("💾 Save Interviewers"):
-        valid = [iv for iv in interviewers if iv["name"] and iv["email"]]
-        if valid:
-            save_interviewers(valid)
-            st.success(f"✅ {len(valid)} interviewers saved to Google Sheets!")
-        else:
-            st.warning("Please fill at least name and email.")
+
+    # ✅ st.form() — page only reloads when Save button clicked
+    with st.form("interviewer_form"):
+        num = st.number_input("Number of interviewers", min_value=1, max_value=10, value=3)
+        interviewers = []
+        for i in range(int(num)):
+            st.markdown(f"**Interviewer {i+1}**")
+            c1, c2, c3, c4 = st.columns(4)
+            interviewers.append({
+                "name": c1.text_input("Name", key=f"iv_name_{i}"),
+                "email": c2.text_input("Email", key=f"iv_email_{i}"),
+                "department": c3.text_input("Dept", key=f"iv_dept_{i}"),
+                "max_per_day": c4.number_input("Max/Day", 1, 10, 3, key=f"iv_max_{i}")
+            })
+
+        submitted = st.form_submit_button("💾 Save Interviewers")
+        if submitted:
+            valid = [iv for iv in interviewers if iv["name"] and iv["email"]]
+            if valid:
+                save_interviewers(valid)
+                st.success(f"✅ {len(valid)} interviewers saved!")
+                st.rerun()
+            else:
+                st.warning("Please fill at least name and email.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — RESUME SCREENING
@@ -94,43 +98,33 @@ with tab0:
 with tab1:
     st.header("📄 AI Resume Screening")
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
+    with st.form("screening_form"):
         st.subheader("Job Description")
-        jd_text = st.text_area("Paste JD here", height=300,
-                                placeholder="We are looking for a Data Analyst with 2+ years of experience...")
-    with col2:
+        jd_text = st.text_area("Paste JD here", height=250,
+                                placeholder="We are looking for a Data Analyst...")
         st.subheader("Upload Resumes (PDF)")
-        uploaded_files = st.file_uploader(
-            "Upload multiple resumes", type=["pdf"],
-            accept_multiple_files=True
-        )
-        st.caption("Tip: Name files as CandidateName.pdf for best results")
+        uploaded_files = st.file_uploader("Upload multiple resumes", type=["pdf"],
+                                           accept_multiple_files=True)
+        submitted = st.form_submit_button("🚀 Run AI Screening", type="primary")
 
+    # Email inputs outside form (dynamic, based on uploaded files)
+    emails = {}
     if uploaded_files:
         st.info(f"📁 {len(uploaded_files)} resume(s) uploaded")
-        emails = {}
         with st.expander("📧 Enter candidate emails (optional)"):
             for uf in uploaded_files:
-                emails[uf.name] = st.text_input(
-                    f"Email for {uf.name}", key=f"email_{uf.name}",
-                    placeholder="candidate@gmail.com"
-                )
+                emails[uf.name] = st.text_input(f"Email for {uf.name}",
+                                                  key=f"email_{uf.name}",
+                                                  placeholder="candidate@gmail.com")
 
-    if st.button("🚀 Run AI Screening", type="primary"):
+    if submitted:
         if not jd_text.strip():
             st.error("Please paste a Job Description.")
         elif not uploaded_files:
             st.error("Please upload at least one resume.")
         else:
-            files = [
-                {
-                    "file_name": uf.name,
-                    "bytes": uf.read(),
-                    "email": emails.get(uf.name, "")
-                }
-                for uf in uploaded_files
-            ]
+            files = [{"file_name": uf.name, "bytes": uf.read(),
+                      "email": emails.get(uf.name, "")} for uf in uploaded_files]
             progress_bar = st.progress(0)
             status_text = st.empty()
 
@@ -145,37 +139,35 @@ with tab1:
             sheet_url = save_screening_results(results)
             st.session_state["screening_done"] = True
             status_text.text("✅ Screening complete!")
-            st.success(f"✅ {len(results)} resumes screened and saved to Google Sheets!")
+            st.success(f"✅ {len(results)} resumes screened!")
             st.markdown(f"[📊 View Google Sheet]({sheet_url})")
 
     if st.session_state["screening_results"]:
         results = st.session_state["screening_results"]
         st.subheader(f"📊 Results — {len(results)} Candidates Ranked")
-
         display_data = []
         for i, r in enumerate(results, 1):
-            rec_color = {"Strong Fit": "🟢", "Moderate Fit": "🟡", "Not Fit": "🔴"}.get(
-                r.get("recommendation", ""), "⚪")
+            rec_color = {"Strong Fit": "🟢", "Moderate Fit": "🟡",
+                         "Not Fit": "🔴"}.get(r.get("recommendation", ""), "⚪")
             display_data.append({
                 "Rank": i,
                 "Candidate": r.get("candidate_name", ""),
                 "Score": r.get("overall_score", 0),
                 "Exp Years": r.get("years_of_experience", ""),
                 "Current Role": r.get("current_role", ""),
-                "Notice Period": r.get("notice_period", ""),
                 "Achievements": "✅" if r.get("quantified_achievements") else "❌",
                 "Recommendation": f"{rec_color} {r.get('recommendation', '')}",
             })
         st.dataframe(pd.DataFrame(display_data), use_container_width=True)
 
-        with st.expander("🔍 View Detailed Analysis per Candidate"):
+        with st.expander("🔍 Detailed Analysis"):
             for r in results:
-                with st.container():
-                    st.markdown(f"### {r.get('candidate_name', 'Unknown')} — Score: {r.get('overall_score', 0)}/100")
-                    c1, c2 = st.columns(2)
-                    c1.markdown("**✅ Strengths:**\n" + "\n".join(f"- {s}" for s in r.get("strengths", [])))
-                    c2.markdown("**❌ Gaps:**\n" + "\n".join(f"- {g}" for g in r.get("gaps", [])))
-                    st.divider()
+                st.markdown(f"### {r.get('candidate_name')} — {r.get('overall_score')}/100")
+                c1, c2 = st.columns(2)
+                c1.markdown("**✅ Strengths:**\n" + "\n".join(f"- {s}" for s in r.get("strengths", [])))
+                c2.markdown("**❌ Gaps:**\n" + "\n".join(f"- {g}" for g in r.get("gaps", [])))
+                st.divider()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — SHORTLIST
@@ -188,40 +180,38 @@ with tab2:
     else:
         df = read_screening_results()
         if df.empty:
-            st.warning("No screening data found. Run screening first.")
+            st.warning("No screening data found.")
         else:
-            st.info("Tick the candidates you want to shortlist, then click Confirm.")
-            strong = df[df["Recommendation"].str.contains("Strong", na=False)]
-            moderate = df[df["Recommendation"].str.contains("Moderate", na=False)]
-
+            st.info("Tick candidates to shortlist, then click Confirm.")
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Screened", len(df))
-            col2.metric("Strong Fit", len(strong))
-            col3.metric("Moderate Fit", len(moderate))
+            col2.metric("Strong Fit", len(df[df["Recommendation"].str.contains("Strong", na=False)]))
+            col3.metric("Moderate Fit", len(df[df["Recommendation"].str.contains("Moderate", na=False)]))
 
-            shortlist_flags = {}
-            for _, row in df.iterrows():
-                rec = str(row.get("Recommendation", ""))
-                default = "Strong" in rec
-                shortlist_flags[row["Candidate Name"]] = st.checkbox(
-                    f"{row['Candidate Name']} — Score: {row['Overall Score']} | {rec}",
-                    value=default,
-                    key=f"shortlist_{row['Candidate Name']}"
-                )
+            # ✅ Checkboxes inside form
+            with st.form("shortlist_form"):
+                shortlist_flags = {}
+                for _, row in df.iterrows():
+                    rec = str(row.get("Recommendation", ""))
+                    shortlist_flags[row["Candidate Name"]] = st.checkbox(
+                        f"{row['Candidate Name']} — Score: {row['Overall Score']} | {rec}",
+                        value="Strong" in rec,
+                        key=f"shortlist_{row['Candidate Name']}"
+                    )
+                submitted = st.form_submit_button("✅ Confirm Shortlist & Send Emails",
+                                                   type="primary")
 
-            selected = [name for name, checked in shortlist_flags.items() if checked]
-            st.markdown(f"**Selected: {len(selected)} candidates**")
-
-            if st.button("✅ Confirm Shortlist & Send Emails", type="primary"):
+            if submitted:
+                selected = [n for n, checked in shortlist_flags.items() if checked]
                 if not selected:
                     st.error("Please select at least one candidate.")
                 else:
                     update_shortlist(selected)
                     shortlisted_df = df[df["Candidate Name"].isin(selected)]
                     interviewers_df = read_interviewers()
+                    sent_c, sent_i, failed = 0, 0, []
 
-                    with st.spinner("Sending availability emails..."):
-                        sent_c, sent_i, failed = 0, 0, []
+                    with st.spinner("Sending emails..."):
                         for _, row in shortlisted_df.iterrows():
                             email = row.get("Email", "")
                             if email:
@@ -231,7 +221,6 @@ with tab2:
                                     sent_c += 1
                                 except Exception as e:
                                     failed.append(f"{row['Candidate Name']}: {e}")
-
                         for _, iv in interviewers_df.iterrows():
                             if iv.get("Email"):
                                 try:
@@ -242,10 +231,10 @@ with tab2:
                                     failed.append(f"{iv['Name']}: {e}")
 
                     st.session_state["shortlist_confirmed"] = True
-                    st.success(f"✅ Shortlisted {len(selected)} candidates")
-                    st.success(f"📧 Emails sent: {sent_c} candidates + {sent_i} interviewers")
+                    st.success(f"✅ {len(selected)} shortlisted | 📧 {sent_c} candidate + {sent_i} interviewer emails sent")
                     if failed:
-                        st.warning("Some emails failed: " + ", ".join(failed))
+                        st.warning("Failed: " + ", ".join(failed))
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — AVAILABILITY STATUS
@@ -256,7 +245,8 @@ with tab3:
     if not st.session_state["shortlist_confirmed"]:
         st.warning("⚠️ Please confirm shortlist first (Tab 2).")
     else:
-        if st.button("🔄 Refresh Responses"):
+        col1, col2 = st.columns([1, 5])
+        if col1.button("🔄 Refresh"):
             st.rerun()
 
         responses_df = read_availability_responses()
@@ -265,44 +255,58 @@ with tab3:
 
         shortlisted_names = shortlisted_df["Candidate Name"].tolist() if not shortlisted_df.empty else []
         iv_names = interviewers_df["Name"].tolist() if not interviewers_df.empty else []
-        responded_names = responses_df["Name"].tolist() if not responses_df.empty else []
+        responded_names = (responses_df["Name"].str.strip().str.lower().tolist()
+                           if not responses_df.empty else [])
 
         st.subheader("Candidate Response Status")
         for name in shortlisted_names:
-            status = "✅ Responded" if name in responded_names else "⏳ Pending"
+            status = "✅ Responded" if name.strip().lower() in responded_names else "⏳ Pending"
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"👤 {name}")
             c2.write(status)
-            if name not in responded_names:
+            if "Pending" in status:
                 email_row = shortlisted_df[shortlisted_df["Candidate Name"] == name]
                 email = email_row.iloc[0]["Email"] if not email_row.empty else ""
-                if c3.button("📨 Send Reminder", key=f"rem_c_{name}") and email:
+                if c3.button("📨 Remind", key=f"rem_c_{name}") and email:
                     send_reminder(name, email, FORM_LINK)
                     st.success(f"Reminder sent to {name}")
 
         st.divider()
         st.subheader("Interviewer Response Status")
         for name in iv_names:
-            status = "✅ Responded" if name in responded_names else "⏳ Pending"
+            status = "✅ Responded" if name.strip().lower() in responded_names else "⏳ Pending"
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"🧑‍💼 {name}")
             c2.write(status)
-            if name not in responded_names:
+            if "Pending" in status:
                 iv_row = interviewers_df[interviewers_df["Name"] == name]
                 email = iv_row.iloc[0]["Email"] if not iv_row.empty else ""
-                if c3.button("📨 Send Reminder", key=f"rem_i_{name}") and email:
+                if c3.button("📨 Remind", key=f"rem_i_{name}") and email:
                     send_reminder(name, email, FORM_LINK)
                     st.success(f"Reminder sent to {name}")
 
         total_expected = len(shortlisted_names) + len(iv_names)
-        total_responded = len([n for n in responded_names if n in shortlisted_names + iv_names])
-        progress_val = min(total_responded / max(total_expected, 1), 1.0)
-        st.progress(progress_val)
+        total_responded = len([n for n in responded_names
+                                if n in [x.lower() for x in shortlisted_names + iv_names]])
+        st.progress(min(total_responded / max(total_expected, 1), 1.0))
         st.caption(f"{total_responded}/{total_expected} responses received")
 
         if not responses_df.empty:
             st.subheader("All Responses")
             st.dataframe(responses_df, use_container_width=True)
+
+        # ── Admin Controls ─────────────────────────────────────────────
+        with st.expander("⚠️ Admin Controls"):
+            if st.button("🗑️ Clear All Responses (New Round)"):
+                from modules.sheets_handler import get_or_create_sheet
+                ws = get_or_create_sheet(
+                    os.getenv("GOOGLE_SHEET_NAME"), "Form Responses 1")
+                all_values = ws.get_all_values()
+                if len(all_values) > 1:
+                    ws.delete_rows(2, len(all_values))
+                    st.success("✅ Responses cleared!")
+                    st.rerun()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — INTERVIEW SCHEDULING
@@ -315,41 +319,105 @@ with tab4:
     else:
         if st.button("📅 Match Slots", type="primary"):
             responses_df = read_availability_responses()
-            shortlisted_df = read_shortlisted()
-            interviewers_df = read_interviewers()
-
             if responses_df.empty:
                 st.error("No availability responses yet. Check Tab 3.")
             else:
-                suggestions = build_schedule_from_responses(
-                    responses_df, shortlisted_df, interviewers_df)
-                st.session_state["suggested_slots"] = suggestions
-                st.session_state["slots_matched"] = True
-                save_scheduled_slots(suggestions)
-                st.success(f"✅ {len(suggestions)} interview slot(s) matched!")
+                slots = build_schedule_from_responses(
+                    responses_df, read_shortlisted(), read_interviewers())
+                st.session_state["suggested_slots"] = slots
+                save_scheduled_slots(slots)
+                st.success(f"✅ {len(slots)} slot(s) matched!")
 
-        if st.session_state["suggested_slots"]:
-            slots = st.session_state["suggested_slots"]
-            st.subheader("Suggested Interview Slots")
+        for i, slot in enumerate(st.session_state.get("suggested_slots", [])):
+            status = slot.get("status", "Confirmed")
+            icons = {
+                "Confirmed": "✅", "Conflict Resolved": "⚡",
+                "Rescheduled": "🔄", "Manually Assigned": "📌",
+                "No Overlap": "❌", "Interviewer Full": "🚫"
+            }
+            colors = {
+                "Confirmed": st.success, "Conflict Resolved": st.warning,
+                "Rescheduled": st.info, "Manually Assigned": st.info,
+                "No Overlap": st.error, "Interviewer Full": st.error
+            }
 
-            for i, slot in enumerate(slots):
-                with st.container():
-                    st.markdown(f"**{slot['candidate']}** → 🗓️ {slot['slot']} with {slot['interviewer']}")
-                    st.caption(f"💡 Reasoning: {slot['reasoning']}")
-                    meet_link = st.text_input("Google Meet link (optional)",
-                                              key=f"meet_{i}",
-                                              placeholder="https://meet.google.com/xxx-xxxx-xxx")
-                    if st.button(f"📨 Send Confirmation to {slot['candidate']}", key=f"confirm_{i}"):
+            with st.container():
+                colors.get(status, st.info)(
+                    f"{icons.get(status,'')} **{slot['candidate']}** → "
+                    f"🗓️ {slot['slot']} with **{slot['interviewer']}** | *{status}*"
+                )
+                st.caption(f"💡 {slot.get('reasoning', '')}")
+
+                # ── Availability Reference (always visible) ────────────
+                responses_df = read_availability_responses()
+                cand_avail = responses_df[
+                    responses_df["Name"].str.strip().str.lower() == slot["candidate"].strip().lower()
+                ]
+                if not cand_avail.empty:
+                    st.info(f"📅 **{slot['candidate']} Availability:** {cand_avail.iloc[0].get('Available Slots', '')}")
+
+                with st.expander("👥 All Interviewer Availability"):
+                    for _, r in responses_df[responses_df["Role"] == "Interviewer"].iterrows():
+                        st.markdown(f"- **{r['Name']}:** {r.get('Available Slots', '')}")
+
+                # ── Manual Assign (No Overlap only) ───────────────────
+                if status == "No Overlap":
+                    c1, c2 = st.columns(2)
+                    m_slot = c1.text_input("Assign slot", key=f"manual_slot_{i}", placeholder="Wed 11AM-12PM")
+                    m_iv = c2.selectbox("Interviewer", read_interviewers()["Name"].tolist(), key=f"manual_iv_{i}")
+                    if st.button(f"📌 Assign", key=f"manual_btn_{i}") and m_slot:
+                        st.session_state["suggested_slots"][i].update({"slot": m_slot, "interviewer": m_iv, "status": "Manually Assigned"})
+                        st.rerun()
+
+                # ── Confirmation Email ─────────────────────────────────
+                if status not in ["No Overlap", "Interviewer Full"]:
+                    meet = st.text_input("Meet link (optional)", key=f"meet_{i}", placeholder="https://meet.google.com/...")
+                    if st.button(f"📨 Send Confirmation", key=f"confirm_{i}"):
                         try:
-                            send_confirmation(
-                                slot["candidate"], slot.get("candidate_email", ""),
-                                slot["interviewer"], slot.get("interviewer_email", ""),
-                                slot["slot"], meet_link or None
-                            )
-                            st.success(f"✅ Confirmation emails sent for {slot['candidate']}!")
+                            send_confirmation(slot["candidate"], slot.get("candidate_email",""),
+                                              slot["interviewer"], slot.get("interviewer_email",""),
+                                              slot["slot"], meet or None)
+                            update_slot_confirmed(slot["candidate"], slot["slot"])
+                            st.success("✅ Confirmation sent!")
                         except Exception as e:
                             st.error(f"Email failed: {e}")
-                    st.divider()
+
+                # ── Reschedule ─────────────────────────────────────────
+                if st.button(f"🔄 Reschedule", key=f"reschedule_{i}"):
+                    st.session_state[f"rescheduling_{i}"] = True
+
+                if st.session_state.get(f"rescheduling_{i}", False):
+                    rc1, rc2, rc3 = st.columns(3)
+                    new_slot = rc1.text_input("New slot", key=f"new_slot_{i}", placeholder="Thu 11AM-12PM")
+                    new_iv   = rc2.selectbox("New interviewer", read_interviewers()["Name"].tolist(), key=f"new_iv_{i}")
+                    new_meet = rc3.text_input("Meet link", key=f"new_meet_{i}", placeholder="https://meet.google.com/...")
+                    bc1, bc2 = st.columns(2)
+                    if bc1.button("✅ Confirm", key=f"confirm_reschedule_{i}"):
+                        if not new_slot:
+                            st.error("Enter a new time slot.")
+                        else:
+                            st.session_state["suggested_slots"][i].update({
+                                "slot": new_slot, "interviewer": new_iv,
+                                "status": "Rescheduled",
+                                "reasoning": f"Rescheduled by admin → {new_slot} with {new_iv}"
+                            })
+                            st.session_state[f"rescheduling_{i}"] = False
+                            try:
+                                iv_df = read_interviewers()
+                                iv_email = iv_df[iv_df["Name"] == new_iv].iloc[0]["Email"]
+                                send_confirmation(slot["candidate"], slot.get("candidate_email",""),
+                                                  new_iv, iv_email, new_slot, new_meet or None)
+                                st.success("✅ Rescheduled & confirmation sent!")
+                            except Exception as e:
+                                st.error(f"Email failed: {e}")
+                            st.rerun()
+                    if bc2.button("❌ Cancel", key=f"cancel_reschedule_{i}"):
+                        st.session_state[f"rescheduling_{i}"] = False
+                        st.rerun()
+
+                st.divider()
+
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — DASHBOARD
