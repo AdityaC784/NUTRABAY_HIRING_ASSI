@@ -63,8 +63,8 @@ nutrabay_hiring/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/nutrabay-hiring-pipeline.git
-cd nutrabay-hiring-pipeline
+git clone https://github.com/AdityaC784/NUTRABAY_HIRING_ASSI.git
+cd NUTRABAY_HIRING_ASSI
 ```
 
 
