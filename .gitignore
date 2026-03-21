@@ -1,6 +1,8 @@
 # Credentials and Environment
 .env
 credentials.json
+__pychache__
+
 
 
 
