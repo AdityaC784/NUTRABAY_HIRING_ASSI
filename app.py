@@ -255,8 +255,11 @@ with tab3:
 
         shortlisted_names = shortlisted_df["Candidate Name"].tolist() if not shortlisted_df.empty else []
         iv_names = interviewers_df["Name"].tolist() if not interviewers_df.empty else []
-        responded_names = (responses_df["Name"].str.strip().str.lower().tolist()
-                           if not responses_df.empty else [])
+        responded_names = (
+    responses_df["Name"].str.strip().str.lower().tolist()
+    if not responses_df.empty and "Name" in responses_df.columns
+    else []
+)   
 
         st.subheader("Candidate Response Status")
         for name in shortlisted_names:
