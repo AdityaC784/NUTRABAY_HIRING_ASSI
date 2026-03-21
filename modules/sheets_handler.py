@@ -124,8 +124,10 @@ def read_availability_responses() -> pd.DataFrame:
         "Available Time Slots": "Available Slots",
         "Role": "Role"
     })
-    df = df[df["Name"].astype(str).str.strip() != ""]
-    df = df[df["Email"].astype(str).str.strip() != ""]
+    if "Name" in df.columns:
+        df = df[df["Name"].astype(str).str.strip() != ""]
+    if "Email" in df.columns:
+        df = df[df["Email"].astype(str).str.strip() != ""]
     return df.reset_index(drop=True)
 
 def save_availability_response(name: str, email: str, role: str, slots: str):
